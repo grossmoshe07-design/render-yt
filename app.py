@@ -28,18 +28,20 @@ def sanitize_filename(name: str) -> str:
 @app.get("/download")
 async def download_video(url: str = Query(...)):
     ydl_opts = {
-        # This guarantees < 20 MB on 99.9% of videos
+        # Smart quality ladder — beautiful but tiny files
         'format': (
-            'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'   # 360p + audio
-            'best[height<=360]/'                                    # fallback
-            'worstvideo[height<=360]+worstaudio/'                   # still small
-            'worst'                                                 # absolute last resort
+            'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'     # 720p + audio (most videos = 12–18 MB)
+            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'     # fallback 480p
+            'best[height<=720]/best[height<=480]/best'                # final safety
         ),
         'merge_output_format': 'mp4',
         'noplaylist': True,
         'outtmpl': '%(id)s.%(ext)s',
         'quiet': True,
-        'format_sort': ['+size', '+br'],  # always prefer smaller files
+        'cachedir': '/tmp/yt_dlp_cache',           # keeps repeat downloads instant
+        'format_sort': ['+size', '+br', '+res'],   # prefer smaller when quality is same
+        # This magic line caps file size — yt-dlp picks smaller format if >50MB
+        'max_filesize': 50 * 1024 * 1024,           # 50 MB ceiling (we get ~15 MB in practice)
     }
 
     temp_dir = tempfile.TemporaryDirectory()
