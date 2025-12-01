@@ -42,6 +42,7 @@ async def download_video(url: str = Query(...)):
         'format_sort': ['+size', '+br', '+res'],   # prefer smaller when quality is same
         # This magic line caps file size — yt-dlp picks smaller format if >50MB
         'max_filesize': 50 * 1024 * 1024,           # 50 MB ceiling (we get ~15 MB in practice)
+        'cookiefile': 'cookies.txt',
     }
 
     temp_dir = tempfile.TemporaryDirectory()
