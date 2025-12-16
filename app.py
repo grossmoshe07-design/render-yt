@@ -20,81 +20,63 @@ app.add_middleware(
 QUALITY_PRESETS = {
     'admin': {
         'format': (
-            'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=1080]/best[height<=720]/best[height<=480]/best'
+            'bestvideo[height<=1080]+bestaudio/best'
         ),
         'max_filesize': 200 * 1024 * 1024,  # 200 MB
         'label': '1080p'
     },
     'enterprise': {
         'format': (
-            'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=1080]/best[height<=720]/best[height<=480]/best'
+            'bestvideo[height<=1080]+bestaudio/best'
         ),
         'max_filesize': 200 * 1024 * 1024,  # 200 MB
         'label': '1080p'
     },
     'pro_plus': {
         'format': (
-            'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=720]/best[height<=480]/best'
+            'bestvideo[height<=720]+bestaudio/best'
         ),
-        'max_filesize': 50 * 1024 * 1024,  # 50 MB
+        'max_filesize': 100 * 1024 * 1024,  # 100 MB
         'label': '720p'
     },
     'pro_user': {
         'format': (
-            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=480]/best[height<=360]/best'
+            'bestvideo[height<=480]+bestaudio/best'
         ),
-        'max_filesize': 35 * 1024 * 1024,  # 35 MB
+        'max_filesize': 50 * 1024 * 1024,  # 50 MB
         'label': '480p'
     },
     'premium': {
         'format': (
-            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=480]/best[height<=360]/best'
+            'bestvideo[height<=480]+bestaudio/best'
         ),
         'max_filesize': 35 * 1024 * 1024,  # 35 MB
         'label': '480p'
     },
     'user': {
         'format': (
-            'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=360]/best[height<=240]/worst'
+            'bestvideo[height<=360]+bestaudio/best'
         ),
         'max_filesize': 25 * 1024 * 1024,  # 25 MB
         'label': '360p'
     },
     'standard': {
         'format': (
-            'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
-            'bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=360]/best[height<=240]/worst'
+            'bestvideo[height<=360]+bestaudio/best'
         ),
         'max_filesize': 25 * 1024 * 1024,  # 25 MB
         'label': '360p'
     },
     'guest': {
         'format': (
-            'bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=240]/worst'
+            'bestvideo[height<=240]+bestaudio/best'
         ),
         'max_filesize': 15 * 1024 * 1024,  # 15 MB
         'label': '240p'
     },
     'free': {
         'format': (
-            'bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=240]/worst'
+            'bestvideo[height<=240]+bestaudio/best'
         ),
         'max_filesize': 15 * 1024 * 1024,  # 15 MB
         'label': '240p'
@@ -155,16 +137,17 @@ async def download_video(
         'outtmpl': '%(id)s.%(ext)s',
         'quiet': False,
         'cachedir': '/tmp/yt_dlp_cache',
-        'format_sort': ['+size', '+br', '+res'],
-        'max_filesize': quality_preset['max_filesize'],
-        'cookiefile': 'cookies.txt',
-        'extractor_args': {'youtube': {'skip': ['dash']}},
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         },
         'socket_timeout': 30,
         'retries': 3,
         'fragment_retries': 3,
+        'max_filesize': quality_preset['max_filesize'],
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }],
     }
     
     temp_dir = tempfile.TemporaryDirectory()
