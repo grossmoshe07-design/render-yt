@@ -16,6 +16,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Quality settings by role
+QUALITY_PRESETS = {
+    'admin': {
+        'format': (
+            'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=720]/'
+            'bestvideo[height<=480]+bestaudio/'
+            'best'
+        ),
+        'label': '720p'
+    },
+    'pro_plus': {
+        'format': (
+            'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=720]/'
+            'bestvideo[height<=480]+bestaudio/'
+            'best'
+        ),
+        'label': '720p'
+    },
+    'pro_user': {
+        'format': (
+            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=480]/'
+            'bestvideo[height<=360]+bestaudio/'
+            'best'
+        ),
+        'label': '480p'
+    },
+    'user': {
+        'format': (
+            'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=360]/'
+            'worstvideo[height<=360]+worstaudio/'
+            'worst'
+        ),
+        'label': '360p'
+    },
+    'guest': {
+        'format': (
+            'bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=240]/'
+            'worst'
+        ),
+        'label': '240p'
+    }
+}
+
 # Remove emojis & weird characters from title
 def sanitize_filename(name: str) -> str:
     if not name:
@@ -26,53 +74,86 @@ def sanitize_filename(name: str) -> str:
     return name or "video"
 
 @app.get("/download")
-async def download_video(url: str = Query(...)):
+async def download_video(
+    url: str = Query(...),
+    quality: str = Query(default='user', description='Role-based quality: admin, pro_plus, pro_user, user, guest')
+):
+    # Validate and get quality preset
+    quality_key = quality.lower()
+    
+    # Backward compatibility: if quality not recognized, default to 'user' (360p)
+    if quality_key not in QUALITY_PRESETS:
+        quality_key = 'user'  # Default to 'user' if invalid or missing
+    
+    quality_preset = QUALITY_PRESETS[quality_key]
+    
     ydl_opts = {
-        # Smart quality ladder — beautiful but tiny files
-        'format': (
-            'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'     # 720p + audio (most videos = 12–18 MB)
-            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'     # fallback 480p
-            'best[height<=720]/best[height<=480]/best'                # final safety
-        ),
+        'format': quality_preset['format'],
         'merge_output_format': 'mp4',
         'noplaylist': True,
         'outtmpl': '%(id)s.%(ext)s',
         'quiet': True,
-        'cachedir': '/tmp/yt_dlp_cache',           # keeps repeat downloads instant
-        'format_sort': ['+size', '+br', '+res'],   # prefer smaller when quality is same
-        # This magic line caps file size — yt-dlp picks smaller format if >50MB
-        'max_filesize': 50 * 1024 * 1024,           # 50 MB ceiling (we get ~15 MB in practice)
-        'cookiefile': 'cookies.txt',
+        'format_sort': ['+size', '+br'],  # prefer smaller files
     }
-
+    
     temp_dir = tempfile.TemporaryDirectory()
     ydl_opts['outtmpl'] = os.path.join(temp_dir.name, '%(id)s.%(ext)s')
-
+    
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             final_filename = ydl.prepare_filename(info)
             safe_title = sanitize_filename(info.get("title", "video"))
-
+        
         def file_streamer():
             try:
                 with open(final_filename, "rb") as f:
                     yield from f
             finally:
                 temp_dir.cleanup()
-
+        
         return StreamingResponse(
             file_streamer(),
             media_type="video/mp4",
             headers={
                 "Content-Disposition": f'attachment; filename="{safe_title}.mp4"',
                 "Cache-Control": "no-cache",
+                "X-Video-Quality": quality_preset['label']  # Add quality info to header
             }
         )
-
     except Exception as e:
         temp_dir.cleanup()
         return {"error": str(e)}
+
+@app.get("/quality-info")
+async def get_quality_info():
+    """Endpoint to check available quality presets"""
+    return {
+        "available_qualities": {
+            role: preset['label'] 
+            for role, preset in QUALITY_PRESETS.items()
+        },
+        "default_quality": "user (360p)",
+        "backward_compatible": True,
+        "note": "If quality parameter is omitted or invalid, defaults to 'user' (360p)"
+    }
+
+@app.get("/")
+async def root():
+    """Root endpoint with API information"""
+    return {
+        "service": "YouTube Video Downloader API",
+        "version": "2.0",
+        "endpoints": {
+            "/download": "Download video with optional quality parameter",
+            "/quality-info": "Get available quality presets"
+        },
+        "backward_compatible": True,
+        "usage": {
+            "old_version": "/download?url=VIDEO_URL (defaults to 360p)",
+            "new_version": "/download?url=VIDEO_URL&quality=ROLE (admin, pro_plus, pro_user, user, guest)"
+        }
+    }
 
 # Local testing only
 if __name__ == "__main__":
