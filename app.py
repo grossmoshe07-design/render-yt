@@ -20,63 +20,63 @@ app.add_middleware(
 QUALITY_PRESETS = {
     'admin': {
         'format': (
-            'bestvideo[height<=1080]+bestaudio/best'
+            'bestvideo[height<=1080]+bestaudio/bestvideo[height<=720]+bestaudio/bestvideo+bestaudio/best'
         ),
         'max_filesize': 200 * 1024 * 1024,  # 200 MB
         'label': '1080p'
     },
     'enterprise': {
         'format': (
-            'bestvideo[height<=1080]+bestaudio/best'
+            'bestvideo[height<=1080]+bestaudio/bestvideo[height<=720]+bestaudio/bestvideo+bestaudio/best'
         ),
         'max_filesize': 200 * 1024 * 1024,  # 200 MB
         'label': '1080p'
     },
     'pro_plus': {
         'format': (
-            'bestvideo[height<=720]+bestaudio/best'
+            'bestvideo[height<=720]+bestaudio/bestvideo[height<=480]+bestaudio/bestvideo+bestaudio/best'
         ),
         'max_filesize': 100 * 1024 * 1024,  # 100 MB
         'label': '720p'
     },
     'pro_user': {
         'format': (
-            'bestvideo[height<=480]+bestaudio/best'
+            'bestvideo[height<=480]+bestaudio/bestvideo[height<=360]+bestaudio/bestvideo+bestaudio/best'
         ),
         'max_filesize': 50 * 1024 * 1024,  # 50 MB
         'label': '480p'
     },
     'premium': {
         'format': (
-            'bestvideo[height<=480]+bestaudio/best'
+            'bestvideo[height<=480]+bestaudio/bestvideo[height<=360]+bestaudio/bestvideo+bestaudio/best'
         ),
         'max_filesize': 35 * 1024 * 1024,  # 35 MB
         'label': '480p'
     },
     'user': {
         'format': (
-            'bestvideo[height<=360]+bestaudio/best'
+            'bestvideo[height<=360]+bestaudio/bestvideo[height<=240]+bestaudio/bestvideo+bestaudio/best'
         ),
         'max_filesize': 25 * 1024 * 1024,  # 25 MB
         'label': '360p'
     },
     'standard': {
         'format': (
-            'bestvideo[height<=360]+bestaudio/best'
+            'bestvideo[height<=360]+bestaudio/bestvideo[height<=240]+bestaudio/bestvideo+bestaudio/best'
         ),
         'max_filesize': 25 * 1024 * 1024,  # 25 MB
         'label': '360p'
     },
     'guest': {
         'format': (
-            'bestvideo[height<=240]+bestaudio/best'
+            'bestvideo[height<=240]+bestaudio/bestvideo+bestaudio/best'
         ),
         'max_filesize': 15 * 1024 * 1024,  # 15 MB
         'label': '240p'
     },
     'free': {
         'format': (
-            'bestvideo[height<=240]+bestaudio/best'
+            'bestvideo[height<=240]+bestaudio/bestvideo+bestaudio/best'
         ),
         'max_filesize': 15 * 1024 * 1024,  # 15 MB
         'label': '240p'
