@@ -153,11 +153,18 @@ async def download_video(
         'merge_output_format': 'mp4',
         'noplaylist': True,
         'outtmpl': '%(id)s.%(ext)s',
-        'quiet': True,
-        'cachedir': '/tmp/yt_dlp_cache',           # keeps repeat downloads instant
-        'format_sort': ['+size', '+br', '+res'],   # prefer smaller when quality is same
-        'max_filesize': quality_preset['max_filesize'],  # role-based file size ceiling
+        'quiet': False,
+        'cachedir': '/tmp/yt_dlp_cache',
+        'format_sort': ['+size', '+br', '+res'],
+        'max_filesize': quality_preset['max_filesize'],
         'cookiefile': 'cookies.txt',
+        'extractor_args': {'youtube': {'skip': ['dash']}},
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        'socket_timeout': 30,
+        'retries': 3,
+        'fragment_retries': 3,
     }
     
     temp_dir = tempfile.TemporaryDirectory()
