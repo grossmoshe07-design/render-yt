@@ -144,6 +144,7 @@ async def download_video(
         'retries': 3,
         'fragment_retries': 3,
         'max_filesize': quality_preset['max_filesize'],
+        'cookiefile': 'cookies.txt',
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
             'preferedformat': 'mp4',
