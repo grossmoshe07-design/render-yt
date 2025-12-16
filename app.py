@@ -21,45 +21,45 @@ QUALITY_PRESETS = {
     'admin': {
         'format': (
             'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=720]/'
-            'bestvideo[height<=480]+bestaudio/'
-            'best'
+            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=720]/best[height<=480]/best'
         ),
+        'max_filesize': 50 * 1024 * 1024,  # 50 MB
         'label': '720p'
     },
     'pro_plus': {
         'format': (
             'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=720]/'
-            'bestvideo[height<=480]+bestaudio/'
-            'best'
+            'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=720]/best[height<=480]/best'
         ),
+        'max_filesize': 50 * 1024 * 1024,  # 50 MB
         'label': '720p'
     },
     'pro_user': {
         'format': (
             'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=480]/'
-            'bestvideo[height<=360]+bestaudio/'
-            'best'
+            'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=480]/best[height<=360]/best'
         ),
+        'max_filesize': 35 * 1024 * 1024,  # 35 MB
         'label': '480p'
     },
     'user': {
         'format': (
             'bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=360]/'
-            'worstvideo[height<=360]+worstaudio/'
-            'worst'
+            'bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/'
+            'best[height<=360]/best[height<=240]/worst'
         ),
+        'max_filesize': 25 * 1024 * 1024,  # 25 MB
         'label': '360p'
     },
     'guest': {
         'format': (
             'bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=240]/'
-            'worst'
+            'best[height<=240]/worst'
         ),
+        'max_filesize': 15 * 1024 * 1024,  # 15 MB
         'label': '240p'
     }
 }
@@ -83,7 +83,7 @@ async def download_video(
     
     # Backward compatibility: if quality not recognized, default to 'user' (360p)
     if quality_key not in QUALITY_PRESETS:
-        quality_key = 'user'  # Default to 'user' if invalid or missing
+        quality_key = 'user'
     
     quality_preset = QUALITY_PRESETS[quality_key]
     
@@ -93,7 +93,10 @@ async def download_video(
         'noplaylist': True,
         'outtmpl': '%(id)s.%(ext)s',
         'quiet': True,
-        'format_sort': ['+size', '+br'],  # prefer smaller files
+        'cachedir': '/tmp/yt_dlp_cache',           # keeps repeat downloads instant
+        'format_sort': ['+size', '+br', '+res'],   # prefer smaller when quality is same
+        'max_filesize': quality_preset['max_filesize'],  # role-based file size ceiling
+        'cookiefile': 'cookies.txt',
     }
     
     temp_dir = tempfile.TemporaryDirectory()
@@ -130,7 +133,10 @@ async def get_quality_info():
     """Endpoint to check available quality presets"""
     return {
         "available_qualities": {
-            role: preset['label'] 
+            role: {
+                "label": preset['label'],
+                "max_filesize_mb": preset['max_filesize'] / (1024 * 1024)
+            }
             for role, preset in QUALITY_PRESETS.items()
         },
         "default_quality": "user (360p)",
@@ -152,7 +158,8 @@ async def root():
         "usage": {
             "old_version": "/download?url=VIDEO_URL (defaults to 360p)",
             "new_version": "/download?url=VIDEO_URL&quality=ROLE (admin, pro_plus, pro_user, user, guest)"
-        }
+        },
+        "example": "/download?url=https://youtube.com/watch?v=xxx&quality=pro_plus"
     }
 
 # Local testing only
