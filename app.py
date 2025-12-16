@@ -20,21 +20,23 @@ app.add_middleware(
 QUALITY_PRESETS = {
     'admin': {
         'format': (
+            'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
             'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
             'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=720]/best[height<=480]/best'
+            'best[height<=1080]/best[height<=720]/best[height<=480]/best'
         ),
-        'max_filesize': 50 * 1024 * 1024,  # 50 MB
-        'label': '720p'
+        'max_filesize': 200 * 1024 * 1024,  # 200 MB
+        'label': '1080p'
     },
     'enterprise': {
         'format': (
+            'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/'
             'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
             'bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/'
-            'best[height<=720]/best[height<=480]/best'
+            'best[height<=1080]/best[height<=720]/best[height<=480]/best'
         ),
-        'max_filesize': 50 * 1024 * 1024,  # 50 MB
-        'label': '720p'
+        'max_filesize': 200 * 1024 * 1024,  # 200 MB
+        'label': '1080p'
     },
     'pro_plus': {
         'format': (
