@@ -35,31 +35,46 @@ app.add_middleware(
 )
 
 # ====================== CONFIG ======================
+
 CONFIG = {
-    "GMAIL_BOT": "yourbot@gmail.com",                    # ← CHANGE
-    "GMAIL_APP_PASSWORD": "abcd efgh ijkl mnop",         # ← CHANGE (App Password)
+    "GMAIL_BOT": os.getenv("GMAIL_BOT"),
+    "GMAIL_APP_PASSWORD": os.getenv("GMAIL_APP_PASSWORD"),
     "DRIVE_FOLDER_NAME": "YouTube Bot Downloads",
     "MAX_ATTACHMENT_MB": 24,
     "MAX_VIDEO_SIZE_MB": 200,
-    "YOUTUBE_API_KEY": "YOUR_YOUTUBE_API_KEY",           # ← CHANGE
-    "SPREADSHEET_ID": "1Potx9BeXT-USmEKeBR4ouw7r1JY6MgCmSLYctqfdaXI",  # ← Your log sheet
-    "SERVICE_ACCOUNT_FILE": "/etc/secrets/service_account.json",  # Render secret path
+    "YOUTUBE_API_KEY": os.getenv("YOUTUBE_API_KEY"),
+    "SPREADSHEET_ID": os.getenv("SPREADSHEET_ID"),
+    "SERVICE_ACCOUNT_JSON": os.getenv("SERVICE_ACCOUNT_JSON"),  # Full JSON string
     "USAGE_RESET_HOURS": 24
 }
 
-# Load service account (will fail locally, but work on Render)
+def get_service_account_path():
+    json_str = CONFIG["SERVICE_ACCOUNT_JSON"]
+    if not json_str:
+        raise Exception("SERVICE_ACCOUNT_JSON not set")
+    
+    tmp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+    json.dump(json.loads(json_str), tmp_file)
+    tmp_file.close()
+    return tmp_file.name
+
+# Update these functions to use temp file
 def get_drive_service():
+    path = get_service_account_path()
     creds = Credentials.from_service_account_file(
-        CONFIG["SERVICE_ACCOUNT_FILE"],
+        path,
         scopes=["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets.readonly"]
     )
+    os.unlink(path)  # Clean up
     return build("drive", "v3", credentials=creds)
 
 def get_sheets_service():
+    path = get_service_account_path()
     creds = Credentials.from_service_account_file(
-        CONFIG["SERVICE_ACCOUNT_FILE"],
+        path,
         scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
     )
+    os.unlink(path)
     return build("spreadsheets", "v4", credentials=creds)
 
 # ====================== ROLE & USAGE ======================
