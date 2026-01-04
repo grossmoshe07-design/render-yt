@@ -1,3 +1,9 @@
-fastapi==0.115.2
-uvicorn[standard]==0.32.0
-yt-dlp==2025.11.12  # Latest stable release
+fastapi
+uvicorn
+yt-dlp
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+requests
+python-dotenv  # optional for local testing
