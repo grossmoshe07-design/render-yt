@@ -185,8 +185,10 @@ def download_video_with_yt_dlp(url: str, preset: dict):
         "max_filesize": preset["max_filesize"],
         "noplaylist": True,
         "quiet": True,
-        "http_headers": {"User-Agent": "Mozilla/5.0"}
+        "http_headers": {"User-Agent": "Mozilla/5.0"},
+        "cookiefile": "cookies.txt",  # ← This loads your file from the repo
     }
+
     with tempfile.TemporaryDirectory() as tmpdir:
         ydl_opts["outtmpl"] = os.path.join(tmpdir, "%(id)s.%(ext)s")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
