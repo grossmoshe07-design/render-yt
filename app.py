@@ -1,4 +1,4 @@
-# app.py - FULL PROFESSIONAL YOUTUBE BOT (January 2026 - Working Version)
+# app.py - FULL WORKING YOUTUBE BOT (January 2026)
 
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,20 +10,16 @@ import re
 import requests
 import json
 from datetime import datetime
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
 from typing import List
 import hashlib
 import traceback
+import base64
+import io
 
 # Google APIs
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
-import io
 
 app = FastAPI()
 
@@ -35,84 +31,91 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ====================== CONFIG (Secrets from Render) ======================
-import os
-
+# ====================== CONFIG ======================
 CONFIG = {
-    "GMAIL_BOT": os.getenv("GMAIL_BOT"),
-    "GMAIL_APP_PASSWORD": os.getenv("GMAIL_APP_PASSWORD"),
     "DRIVE_FOLDER_NAME": "YouTube Bot Downloads",
     "MAX_ATTACHMENT_MB": 24,
     "MAX_VIDEO_SIZE_MB": 200,
     "YOUTUBE_API_KEY": os.getenv("YOUTUBE_API_KEY"),
     "SPREADSHEET_ID": os.getenv("SPREADSHEET_ID"),
-    "SERVICE_ACCOUNT_JSON": os.getenv("SERVICE_ACCOUNT_JSON"),  # Full JSON string
+    "SERVICE_ACCOUNT_JSON": os.getenv("SERVICE_ACCOUNT_JSON"),
+    "EMAIL_WEBHOOK_URL": os.getenv("EMAIL_WEBHOOK_URL"),  # Apps Script URL
     "USAGE_RESET_HOURS": 24
 }
 
-# ====================== TEMP SERVICE ACCOUNT FILE ======================
-def get_service_account_path():
+# ====================== SERVICE ACCOUNT LOADING ======================
+def get_service_account_info():
     json_str = CONFIG["SERVICE_ACCOUNT_JSON"]
     if not json_str:
-        raise Exception("SERVICE_ACCOUNT_JSON secret not set")
-    tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
-    json.dump(json.loads(json_str), tmp)
-    tmp.close()
-    return tmp.name
+        print("SERVICE_ACCOUNT_JSON not set")
+        return None
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        print(f"Invalid SERVICE_ACCOUNT_JSON: {e}")
+        return None
 
 def get_drive_service():
-    path = get_service_account_path()
-    creds = Credentials.from_service_account_file(
-        path,
-        scopes=["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets.readonly"]
-    )
-    os.unlink(path)
-    return build("drive", "v3", credentials=creds)
+    info = get_service_account_info()
+    if not info:
+        return None
+    try:
+        creds = Credentials.from_service_account_info(
+            info,
+            scopes=["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/drive.file"]
+        )
+        return build("drive", "v3", credentials=creds)
+    except Exception as e:
+        print(f"Drive service error: {e}")
+        return None
 
 def get_sheets_service():
-    path = get_service_account_path()
-    creds = Credentials.from_service_account_file(
-        path,
-        scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"]
-    )
-    os.unlink(path)
-    return build("spreadsheets", "v4", credentials=creds)
+    info = get_service_account_info()
+    if not info:
+        return None
+    try:
+        creds = Credentials.from_service_account_info(
+            info,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+        return build("spreadsheets", "v4", credentials=creds)
+    except Exception as e:
+        print(f"Sheets service error: {e}")
+        return None
 
-# ====================== ROLE LIMITS & QUALITY ======================
+# ====================== ROLES & QUALITY ======================
 ROLE_LIMITS = {
-    "admin": {"downloads": float('inf'), "searches": float('inf'), "maxResults": 15, "quality": "1080p", "label": "Admin"},
-    "enterprise": {"downloads": float('inf'), "searches": float('inf'), "maxResults": 15, "quality": "1080p", "label": "Enterprise"},
-    "pro_plus": {"downloads": 25, "searches": 25, "maxResults": 15, "quality": "720p", "label": "Pro Plus"},
-    "pro_user": {"downloads": 12, "searches": 12, "maxResults": 12, "quality": "480p", "label": "Pro User"},
-    "premium": {"downloads": 15, "searches": 15, "maxResults": 12, "quality": "480p", "label": "Premium"},
-    "user": {"downloads": 5, "searches": 5, "maxResults": 5, "quality": "360p", "label": "Standard User"},
-    "standard": {"downloads": 5, "searches": 5, "maxResults": 5, "quality": "360p", "label": "Standard Member"},
-    "guest": {"downloads": 1, "searches": 5, "maxResults": 5, "quality": "240p", "label": "Guest"},
-    "free": {"downloads": 2, "searches": 5, "maxResults": 5, "quality": "240p", "label": "Free User"},
-    "denied": {"downloads": 0, "searches": 0, "maxResults": 0, "quality": "DENIED", "label": "Access Denied"},
-    "suspended": {"downloads": 0, "searches": 0, "maxResults": 0, "quality": "SUSPENDED", "label": "Suspended"},
-    "banned": {"downloads": 0, "searches": 0, "maxResults": 0, "quality": "BANNED", "label": "Banned"},
-    "closed": {"downloads": 0, "searches": 0, "maxResults": 0, "quality": "CLOSED", "label": "Closed"}
+    "admin": {"downloads": float('inf'), "searches": float('inf'), "maxResults": 15, "quality": "1080p"},
+    "enterprise": {"downloads": float('inf'), "searches": float('inf'), "maxResults": 15, "quality": "1080p"},
+    "pro_plus": {"downloads": 25, "searches": 25, "maxResults": 15, "quality": "720p"},
+    "pro_user": {"downloads": 12, "searches": 12, "maxResults": 12, "quality": "480p"},
+    "premium": {"downloads": 15, "searches": 15, "maxResults": 12, "quality": "480p"},
+    "user": {"downloads": 5, "searches": 5, "maxResults": 5, "quality": "360p"},
+    "standard": {"downloads": 5, "searches": 5, "maxResults": 5, "quality": "360p"},
+    "guest": {"downloads": 1, "searches": 5, "maxResults": 5, "quality": "240p"},
+    "free": {"downloads": 2, "searches": 5, "maxResults": 5, "quality": "240p"},
 }
 
 QUALITY_PRESETS = {
-    "admin": {"format": "bestvideo[height<=1080]+bestaudio/best", "max_filesize": 200*1024*1024, "label": "1080p"},
-    "enterprise": {"format": "bestvideo[height<=1080]+bestaudio/best", "max_filesize": 200*1024*1024, "label": "1080p"},
-    "pro_plus": {"format": "bestvideo[height<=720]+bestaudio/best", "max_filesize": 100*1024*1024, "label": "720p"},
-    "pro_user": {"format": "bestvideo[height<=480]+bestaudio/best", "max_filesize": 50*1024*1024, "label": "480p"},
-    "premium": {"format": "bestvideo[height<=480]+bestaudio/best", "max_filesize": 35*1024*1024, "label": "480p"},
-    "user": {"format": "bestvideo[height<=360]+bestaudio/best", "max_filesize": 25*1024*1024, "label": "360p"},
-    "standard": {"format": "bestvideo[height<=360]+bestaudio/best", "max_filesize": 25*1024*1024, "label": "360p"},
-    "guest": {"format": "bestvideo[height<=240]+bestaudio/best", "max_filesize": 15*1024*1024, "label": "240p"},
-    "free": {"format": "bestvideo[height<=240]+bestaudio/best", "max_filesize": 15*1024*1024, "label": "240p"}
+    "admin": {"format": "bestvideo[height<=1080]+bestaudio/best", "max_filesize": 200*1024*1024},
+    "enterprise": {"format": "bestvideo[height<=1080]+bestaudio/best", "max_filesize": 200*1024*1024},
+    "pro_plus": {"format": "bestvideo[height<=720]+bestaudio/best", "max_filesize": 100*1024*1024},
+    "pro_user": {"format": "bestvideo[height<=480]+bestaudio/best", "max_filesize": 50*1024*1024},
+    "premium": {"format": "bestvideo[height<=480]+bestaudio/best", "max_filesize": 35*1024*1024},
+    "user": {"format": "bestvideo[height<=360]+bestaudio/best", "max_filesize": 25*1024*1024},
+    "standard": {"format": "bestvideo[height<=360]+bestaudio/best", "max_filesize": 25*1024*1024},
+    "guest": {"format": "bestvideo[height<=240]+bestaudio/best", "max_filesize": 15*1024*1024},
+    "free": {"format": "bestvideo[height<=240]+bestaudio/best", "max_filesize": 15*1024*1024},
 }
 
-USAGE_DB = {}  # {hashed_email: {"last_reset": datetime, "downloads": int, "searches": int}}
+USAGE_DB = {}
 
 # ====================== ROLE LOOKUP ======================
 def get_user_role_from_sheet(email: str) -> str:
+    service = get_sheets_service()
+    if not service:
+        return "guest"
     try:
-        service = get_sheets_service()
         result = service.spreadsheets().values().get(
             spreadsheetId=CONFIG["SPREADSHEET_ID"],
             range="User Roles!A:B"
@@ -125,11 +128,11 @@ def get_user_role_from_sheet(email: str) -> str:
                     return role
         return "guest"
     except Exception as e:
-        print(f"Role lookup error: {e}")
+        print(f"Role lookup failed: {e}")
         return "guest"
 
-# ====================== USAGE TRACKING ======================
-def check_and_increment_usage(email: str, action: str) -> dict:
+# ====================== USAGE ======================
+def check_and_increment_usage(email: str, action: str):
     now = datetime.utcnow()
     key = hashlib.md5(email.lower().encode()).hexdigest()
     record = USAGE_DB.get(key, {"last_reset": now, "downloads": 0, "searches": 0})
@@ -153,10 +156,93 @@ def check_and_increment_usage(email: str, action: str) -> dict:
     USAGE_DB[key] = record
     return {"allowed": True, "role": role, "limits": limits}
 
+# ====================== LOGGING ======================
+def log_to_sheet(event_type: str, user_email: str, details: dict = {}):
+    service = get_sheets_service()
+    if not service:
+        return
+    try:
+        row = [
+            datetime.utcnow().isoformat(),
+            event_type,
+            user_email,
+            details.get("role", "guest"),
+            details.get("type", ""),
+            details.get("query", "") or ", ".join(details.get("links", [])),
+            details.get("count", 0),
+            details.get("success", 0),
+            details.get("delivery", ""),
+            details.get("status", ""),
+            str(details.get("error", ""))[:500]
+        ]
+        service.spreadsheets().values().append(
+            spreadsheetId=CONFIG["SPREADSHEET_ID"],
+            range="Detailed Log!A:K",
+            valueInputOption="USER_ENTERED",
+            body={"values": [row]}
+        ).execute()
+    except Exception as e:
+        print(f"Logging failed: {e}")
+
+# ====================== EMAIL VIA APPS SCRIPT ======================
+def send_email(to: str, subject: str, html: str, attachments: list = []):
+    webhook_url = CONFIG["EMAIL_WEBHOOK_URL"]
+    if not webhook_url:
+        raise Exception("EMAIL_WEBHOOK_URL not set")
+
+    att_list = []
+    for blob_bytes, filename in attachments:
+        b64 = base64.b64encode(blob_bytes).decode()
+        att_list.append({
+            "filename": filename,
+            "mimeType": "video/mp4",
+            "data": b64
+        })
+
+    payload = {
+        "to": to,
+        "subject": subject,
+        "html": html,
+        "attachments": att_list
+    }
+
+    try:
+        r = requests.post(webhook_url, json=payload, timeout=30)
+        r.raise_for_status()
+        print(f"Email sent via Apps Script to {to}")
+    except Exception as e:
+        print(f"Email webhook failed: {e}")
+        raise
+
+# ====================== DOWNLOAD ======================
+def download_video_with_yt_dlp(url: str, preset: dict):
+    ydl_opts = {
+        "format": preset["format"],
+        "merge_output_format": "mp4",
+        "outtmpl": "%(id)s.%(ext)s",
+        "max_filesize": preset["max_filesize"],
+        "noplaylist": True,
+        "quiet": True,
+        "http_headers": {"User-Agent": "Mozilla/5.0"},
+        "cookiefile": "cookies.txt" if os.path.exists("cookies.txt") else None,
+        "remote_components": "ejs:github"
+    }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ydl_opts["outtmpl"] = os.path.join(tmpdir, "%(id)s.%(ext)s")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            with open(filename, "rb") as f:
+                blob = f.read()
+    return blob, info
+
 # ====================== DRIVE UPLOAD ======================
 def upload_to_drive(blob: bytes, filename: str) -> str:
+    service = get_drive_service()
+    if not service:
+        raise Exception("Drive API not available")
     try:
-        service = get_drive_service()
         query = f"name='{CONFIG['DRIVE_FOLDER_NAME']}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
         results = service.files().list(q=query, fields="files(id)").execute()
         folder_id = results.get("files", [{}])[0].get("id")
@@ -176,66 +262,6 @@ def upload_to_drive(blob: bytes, filename: str) -> str:
     except Exception as e:
         raise Exception(f"Drive upload failed: {str(e)}")
 
-# ====================== DOWNLOAD HELPERS ======================
-def download_video_with_yt_dlp(url: str, preset: dict):
-    ydl_opts = {
-        "format": preset["format"],
-        "merge_output_format": "mp4",
-        "outtmpl": "%(id)s.%(ext)s",
-        "max_filesize": preset["max_filesize"],
-        "noplaylist": True,
-        "quiet": True,
-        "http_headers": {"User-Agent": "Mozilla/5.0"},
-        "cookiefile": "cookies.txt",  # ← This loads your file from the repo
-    }
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        ydl_opts["outtmpl"] = os.path.join(tmpdir, "%(id)s.%(ext)s")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            with open(filename, "rb") as f:
-                blob = f.read()
-    return blob, info
-
-# ====================== EMAIL SENDING ======================
-def send_email(to: str, subject: str, html: str, attachments: list = []):
-    webhook_url = os.getenv("EMAIL_WEBHOOK_URL")
-    if not webhook_url:
-        raise Exception("EMAIL_WEBHOOK_URL not set in secrets")
-
-    # Prepare attachments as base64
-    att_list = []
-    for blob_bytes, filename in attachments:
-        import base64
-        b64 = base64.b64encode(blob_bytes).decode()
-        att_list.append({
-            "filename": filename,
-            "mimeType": "video/mp4",
-            "data": b64
-        })
-
-    payload = {
-        "to": to,
-        "subject": subject,
-        "html": html,
-        "attachments": att_list
-    }
-
-    try:
-        response = requests.post(
-            webhook_url,
-            json=payload,
-            timeout=30
-        )
-        response.raise_for_status()
-        result = response.json()
-        if result.get("status") != "success":
-            raise Exception(f"Apps Script error: {result}")
-        print(f"Email sent via Apps Script to {to}")
-    except Exception as e:
-        print(f"Email webhook failed: {e}")
-        raise
 # ====================== MAIN ENDPOINT ======================
 @app.post("/process-request")
 async def process_request(req: Request, bg: BackgroundTasks):
@@ -251,7 +277,13 @@ def handle_full_request(data: dict):
     email_match = re.search(r'<([^>]+)>', sender)
     user_email = email_match.group(1) if email_match else sender.strip("<>")
 
+    log_to_sheet("REQUEST_RECEIVED", user_email, {"type": data["type"]})
+
     try:
+        role = get_user_role_from_sheet(user_email)
+        if role == "guest":
+            log_to_sheet("NEW_USER", user_email, {"role": "guest"})
+
         if data["type"] == "download":
             results = process_downloads(data["links"], user_email)
         else:
@@ -260,10 +292,13 @@ def handle_full_request(data: dict):
         html = build_final_reply_html(results)
         send_email(user_email, "📺 Your Videos Are Ready!", html, results.get("attachments", []))
 
+        log_to_sheet("SUCCESS", user_email, {"status": "DELIVERED"})
+
     except Exception as e:
         error_trace = traceback.format_exc()
         print("ERROR:", error_trace)
-        send_email(user_email, "⚠️ Processing Error", f"<pre>{error_trace}</pre>")
+        log_to_sheet("FAILED", user_email, {"error": str(e)})
+        send_email(user_email, "⚠️ Error", f"<pre>{error_trace}</pre>")
 
 # ====================== PROCESS DOWNLOADS ======================
 def process_downloads(links: List[str], user_email: str) -> dict:
@@ -334,10 +369,10 @@ def process_search(query: str, user_email: str) -> dict:
     search_res = requests.get(search_url, params=params).json()
 
     items = search_res.get("items", [])
-    video_ids = [i["id"]["videoId"] for i in items]
     results = []
 
-    if video_ids:
+    if items:
+        video_ids = [i["id"]["videoId"] for i in items]
         videos_url = "https://www.googleapis.com/youtube/v3/videos"
         v_params = {"part": "snippet,contentDetails,statistics", "id": ",".join(video_ids), "key": CONFIG["YOUTUBE_API_KEY"]}
         videos_res = requests.get(videos_url, params=v_params).json()
@@ -355,7 +390,7 @@ def process_search(query: str, user_email: str) -> dict:
 
     return {"type": "search", "results": results, "query": query}
 
-# ====================== HTML TEMPLATES ======================
+# ====================== HTML ======================
 STYLE = "<style>@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');</style>"
 
 def build_final_reply_html(data: dict) -> str:
@@ -365,9 +400,6 @@ def build_final_reply_html(data: dict) -> str:
 
 def build_download_html(results: list, total_attach_mb: float):
     cards = ""
-    has_attach = any(r.get("delivery") == "email" for r in results if r.get("success"))
-    has_drive = any(r.get("delivery") == "drive" for r in results if r.get("success"))
-
     for r in results:
         if not r.get("success"):
             cards += f'<div style="background:#ffebee;padding:15px;border-radius:8px;margin:15px 0;color:#c62828;">Failed: {r["error"]}</div>'
@@ -399,35 +431,27 @@ def build_download_html(results: list, total_attach_mb: float):
                 </div>
             </div>'''
 
-    summary = "Your videos are ready!"
-    if has_attach and has_drive:
-        summary += f" Small ones attached ({total_attach_mb} MB), larger on Drive."
-    elif has_attach:
-        summary += " All attached to this email."
-    elif has_drive:
-        summary += " Uploaded to Google Drive."
-
     return f'''
     <div style="font-family:'Roboto',sans-serif;max-width:750px;margin:0 auto;background:#f5f5f5;padding:20px;border-radius:16px;">
         <div style="background:#FF0000;padding:20px;text-align:center;border-radius:16px 16px 0 0;">
             <h1 style="margin:0;color:white;">YouTube Bot</h1>
         </div>
         <div style="background:white;padding:30px;border-radius:0 0 16px 16px;">
-            <p style="font-size:16px;color:#333;">{summary}</p>
+            <p style="font-size:16px;color:#333;">Your videos are ready!</p>
             {cards}
         </div>
     </div>'''
 
 def build_search_html(results: list, query: str):
     cards = ""
-    bot_email = CONFIG["GMAIL_BOT"]
+    bot_email = "yourbot@gmail.com"  # Change if needed
     for r in results:
         cards += f'''
         <div style="background:#fafafa;padding:20px;border-radius:12px;margin:20px 0;">
             <img src="{r['thumbnail']}" style="width:160px;height:90px;object-fit:cover;float:left;margin-right:20px;border-radius:8px;">
             <h3 style="margin:0 0 8px;">{r['title'][:80]}{'...' if len(r['title'])>80 else ''}</h3>
             <p style="margin:0 0 12px;color:#666;">{r['channel']} • {r['duration']} • {r['views']:,} views</p>
-            <a href="mailto:{bot_email}?subject=ct&body={r['link']}" style="background:#FF0000;color:white;padding:10px 20px;border-radius:50px;text-decoration:none;">↓ Download This Video</a>
+            <a href="mailto:{bot_email}?subject=ct&body={r['link']}" style="background:#FF0000;color:white;padding:10px 20px;border-radius:50px;text-decoration:none;">Download This Video</a>
         </div>'''
 
     return f'''
@@ -436,7 +460,7 @@ def build_search_html(results: list, query: str):
             <h2 style="margin:0;color:white;">Search Results for "{query}"</h2>
         </div>
         <div style="padding:30px;">
-            {cards or "<p>No results found.</p>"}
+            {cards or "<p>No results found. Try different keywords!</p>"}
         </div>
     </div>'''
 
@@ -450,7 +474,7 @@ def format_duration(arg):
         m, s = divmod(rem, 60)
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
-# ====================== BACKWARD COMPATIBLE /download ======================
+# ====================== BACKWARD COMPATIBLE ======================
 @app.get("/download")
 async def download_video(url: str, quality: str = "user"):
     preset = QUALITY_PRESETS.get(quality.lower(), QUALITY_PRESETS["guest"])
@@ -464,4 +488,4 @@ async def download_video(url: str, quality: str = "user"):
 
 @app.get("/")
 async def root():
-    return {"service": "YouTube Bot", "status": "running", "endpoints": ["/process-request", "/download"]}
+    return {"service": "YouTube Bot", "status": "running"}
