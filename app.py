@@ -17,6 +17,7 @@ import base64
 import io
 
 # Google APIs
+from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -68,7 +69,6 @@ def get_drive_service():
     except Exception as e:
         print(f"Drive service error: {e}")
         return None
-from google.auth.transport.requests import Request  # ← Add this import at the top
 
 def get_sheets_service():
     info = get_service_account_info()
@@ -81,7 +81,7 @@ def get_sheets_service():
             scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
         if not creds.valid:
-            creds.refresh(Request())  # Now Request is defined
+            creds.refresh(GoogleRequest()) # Now Request is defined
 
         service = build('sheets', 'v4', credentials=creds, cache_discovery=False)
         return service
