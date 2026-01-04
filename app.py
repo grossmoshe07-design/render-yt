@@ -200,28 +200,42 @@ def download_video_with_yt_dlp(url: str, preset: dict):
 
 # ====================== EMAIL SENDING ======================
 def send_email(to: str, subject: str, html: str, attachments: list = []):
-    msg = MIMEMultipart("alternative")
-    msg["From"] = CONFIG["GMAIL_BOT"]
-    msg["To"] = to
-    msg["Subject"] = subject
-    msg.attach(MIMEText(html, "html"))
+    webhook_url = os.getenv("EMAIL_WEBHOOK_URL")
+    if not webhook_url:
+        raise Exception("EMAIL_WEBHOOK_URL not set in secrets")
 
-    for blob, filename in attachments:
-        part = MIMEBase("application", "octet-stream")
-        part.set_payload(blob)
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
-        msg.attach(part)
+    # Prepare attachments as base64
+    att_list = []
+    for blob_bytes, filename in attachments:
+        import base64
+        b64 = base64.b64encode(blob_bytes).decode()
+        att_list.append({
+            "filename": filename,
+            "mimeType": "video/mp4",
+            "data": b64
+        })
+
+    payload = {
+        "to": to,
+        "subject": subject,
+        "html": html,
+        "attachments": att_list
+    }
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(CONFIG["GMAIL_BOT"], CONFIG["GMAIL_APP_PASSWORD"])
-            server.send_message(msg)
-        print(f"Email sent to {to}")
+        response = requests.post(
+            webhook_url,
+            json=payload,
+            timeout=30
+        )
+        response.raise_for_status()
+        result = response.json()
+        if result.get("status") != "success":
+            raise Exception(f"Apps Script error: {result}")
+        print(f"Email sent via Apps Script to {to}")
     except Exception as e:
-        print(f"Email failed: {e}")
+        print(f"Email webhook failed: {e}")
         raise
-
 # ====================== MAIN ENDPOINT ======================
 @app.post("/process-request")
 async def process_request(req: Request, bg: BackgroundTasks):
