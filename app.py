@@ -72,15 +72,21 @@ def get_drive_service():
 def get_sheets_service():
     info = get_service_account_info()
     if not info:
+        print("No service account info")
         return None
     try:
         creds = Credentials.from_service_account_info(
             info,
             scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
-        return build("spreadsheets", "v4", credentials=creds)
+        if not creds.valid:
+            creds.refresh(Request())
+
+        # This fixes the "name: spreadsheets version: v4" bug 100%
+        service = build('sheets', 'v4', credentials=creds, cache_discovery=False)
+        return service
     except Exception as e:
-        print(f"Sheets service error: {e}")
+        print(f"Sheets service failed: {e}")
         return None
 
 # ====================== ROLES & QUALITY ======================
