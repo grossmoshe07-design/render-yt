@@ -7,4 +7,4 @@ google-auth-httplib2==0.2.0
 google-api-python-client==1.12.5
 requests==2.31.0
 python-multipart==0.0.6
-pydantic==2.5.0
+pydantic>=2.6.0
