@@ -1,6 +1,6 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-yt-dlp==2024.1.1
+yt-dlp>=2026.2.22
 google-auth==2.26.0
 google-auth-oauthlib==1.2.0
 google-auth-httplib2==0.2.0
