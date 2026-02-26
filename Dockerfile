@@ -7,9 +7,13 @@ FROM python:3.13-slim
 WORKDIR /app
 
 # Install Node.js and npm (required for yt-dlp challenge solving)
+# Also install build tools for compiling Python packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gnupg \
+    build-essential \
+    gcc \
+    python3-dev \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
