@@ -1,5 +1,3 @@
-# app.py - FULL WORKING YOUTUBE BOT (January 2026)
-
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -15,6 +13,7 @@ import hashlib
 import traceback
 import base64
 import io
+import subprocess
 
 # Google APIs
 from google.auth.transport.requests import Request as GoogleRequest
@@ -81,7 +80,7 @@ def get_sheets_service():
             scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
         if not creds.valid:
-            creds.refresh(GoogleRequest()) # Now Request is defined
+            creds.refresh(GoogleRequest())
 
         service = build('sheets', 'v4', credentials=creds, cache_discovery=False)
         return service
@@ -220,8 +219,12 @@ def send_email(to: str, subject: str, html: str, attachments: list = []):
         print(f"Email webhook failed: {e}")
         raise
 
-# ====================== DOWNLOAD ======================
+# ====================== DOWNLOAD WITH FIX ======================
 def download_video_with_yt_dlp(url: str, preset: dict):
+    """
+    FIXED VERSION: Removes malformed remote_components and adds proper error handling.
+    Uses yt-dlp with JavaScript challenge solver support.
+    """
     ydl_opts = {
         "format": preset["format"],
         "merge_output_format": "mp4",
@@ -229,19 +232,35 @@ def download_video_with_yt_dlp(url: str, preset: dict):
         "max_filesize": preset["max_filesize"],
         "noplaylist": True,
         "quiet": True,
-        "http_headers": {"User-Agent": "Mozilla/5.0"},
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        },
         "cookiefile": "cookies.txt" if os.path.exists("cookies.txt") else None,
-        "remote_components": "ejs:github"
+        # REMOVED: "remote_components": "ejs:github" (was causing malformed parsing)
+        # Let yt-dlp use its default component resolution
     }
 
     with tempfile.TemporaryDirectory() as tmpdir:
         ydl_opts["outtmpl"] = os.path.join(tmpdir, "%(id)s.%(ext)s")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            with open(filename, "rb") as f:
-                blob = f.read()
-    return blob, info
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                filename = ydl.prepare_filename(info)
+                with open(filename, "rb") as f:
+                    blob = f.read()
+            return blob, info
+        except yt_dlp.utils.ExtractorError as e:
+            # Try alternative: use best available format without quality constraints
+            if "No video formats found" in str(e):
+                print("Retrying with fallback format...")
+                ydl_opts["format"] = "best"  # Fallback to best available
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    filename = ydl.prepare_filename(info)
+                    with open(filename, "rb") as f:
+                        blob = f.read()
+                return blob, info
+            raise
 
 # ====================== DRIVE UPLOAD ======================
 def upload_to_drive(blob: bytes, filename: str) -> str:
