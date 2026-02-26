@@ -1,9 +1,10 @@
-fastapi
-uvicorn
-yt-dlp
-google-api-python-client
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-requests
-python-dotenv  # optional for local testing
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+yt-dlp==2024.1.1
+google-auth==2.26.0
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+google-api-python-client==1.12.5
+requests==2.31.0
+python-multipart==0.0.6
+pydantic==2.5.0

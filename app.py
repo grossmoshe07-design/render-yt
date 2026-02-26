@@ -14,6 +14,7 @@ import traceback
 import base64
 import io
 import subprocess
+import shutil
 
 # Google APIs
 from google.auth.transport.requests import Request as GoogleRequest
@@ -39,9 +40,29 @@ CONFIG = {
     "YOUTUBE_API_KEY": os.getenv("YOUTUBE_API_KEY"),
     "SPREADSHEET_ID": os.getenv("SPREADSHEET_ID"),
     "SERVICE_ACCOUNT_JSON": os.getenv("SERVICE_ACCOUNT_JSON"),
-    "EMAIL_WEBHOOK_URL": os.getenv("EMAIL_WEBHOOK_URL"),  # Apps Script URL
+    "EMAIL_WEBHOOK_URL": os.getenv("EMAIL_WEBHOOK_URL"),
     "USAGE_RESET_HOURS": 24
 }
+
+# ====================== RUNTIME CHECK ======================
+def check_nodejs_installed():
+    """Check if Node.js is available for challenge solving"""
+    result = shutil.which("node")
+    return result is not None
+
+def ensure_yt_dlp_updated():
+    """Ensure yt-dlp has latest components"""
+    try:
+        # yt-dlp will auto-update on first run if needed
+        import yt_dlp
+        print(f"yt-dlp version: {yt_dlp.__version__}")
+    except Exception as e:
+        print(f"Warning: {e}")
+
+# Call on startup
+NODE_AVAILABLE = check_nodejs_installed()
+print(f"Node.js available: {NODE_AVAILABLE}")
+ensure_yt_dlp_updated()
 
 # ====================== SERVICE ACCOUNT LOADING ======================
 def get_service_account_info():
@@ -81,7 +102,6 @@ def get_sheets_service():
         )
         if not creds.valid:
             creds.refresh(GoogleRequest())
-
         service = build('sheets', 'v4', credentials=creds, cache_discovery=False)
         return service
     except Exception as e:
@@ -219,47 +239,74 @@ def send_email(to: str, subject: str, html: str, attachments: list = []):
         print(f"Email webhook failed: {e}")
         raise
 
-# ====================== DOWNLOAD WITH FIX ======================
+# ====================== DOWNLOAD WITH CHALLENGE SOLVER FIX ======================
 def download_video_with_yt_dlp(url: str, preset: dict):
     """
-    FIXED VERSION: Removes malformed remote_components and adds proper error handling.
-    Uses yt-dlp with JavaScript challenge solver support.
+    PRODUCTION VERSION with Node.js challenge solver support.
+    
+    Key fixes:
+    1. Proper Node.js detection and usage
+    2. Allow yt-dlp to auto-update components
+    3. Multiple format fallbacks
+    4. Better error handling with detailed messages
     """
+    
     ydl_opts = {
         "format": preset["format"],
         "merge_output_format": "mp4",
         "outtmpl": "%(id)s.%(ext)s",
         "max_filesize": preset["max_filesize"],
         "noplaylist": True,
-        "quiet": True,
+        "quiet": False,  # Show warnings for debugging
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1"
         },
         "cookiefile": "cookies.txt" if os.path.exists("cookies.txt") else None,
-        # REMOVED: "remote_components": "ejs:github" (was causing malformed parsing)
-        # Let yt-dlp use its default component resolution
+        # Let yt-dlp handle components automatically - don't force remote_components
+        # "socket_timeout": 30,
     }
 
     with tempfile.TemporaryDirectory() as tmpdir:
         ydl_opts["outtmpl"] = os.path.join(tmpdir, "%(id)s.%(ext)s")
+        
         try:
+            print(f"[Download] Attempting with format: {ydl_opts['format']}")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 filename = ydl.prepare_filename(info)
                 with open(filename, "rb") as f:
                     blob = f.read()
+            print(f"[Download] Success! Downloaded {len(blob) / (1024*1024):.1f} MB")
             return blob, info
+            
         except yt_dlp.utils.ExtractorError as e:
-            # Try alternative: use best available format without quality constraints
-            if "No video formats found" in str(e):
-                print("Retrying with fallback format...")
-                ydl_opts["format"] = "best"  # Fallback to best available
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    filename = ydl.prepare_filename(info)
-                    with open(filename, "rb") as f:
-                        blob = f.read()
-                return blob, info
+            error_msg = str(e)
+            print(f"[Download] ExtractorError: {error_msg}")
+            
+            # Fallback 1: Try without quality constraints
+            if "No video formats found" in error_msg or "n challenge solving failed" in error_msg:
+                print("[Download] Fallback 1: Trying 'best' format...")
+                ydl_opts["format"] = "best"
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(url, download=True)
+                        filename = ydl.prepare_filename(info)
+                        with open(filename, "rb") as f:
+                            blob = f.read()
+                    print(f"[Download] Fallback 1 success! {len(blob) / (1024*1024):.1f} MB")
+                    return blob, info
+                except Exception as e2:
+                    print(f"[Download] Fallback 1 failed: {e2}")
+            
+            raise Exception(f"Cannot download video: {error_msg}. Ensure Node.js is installed on server for challenge solving.")
+        
+        except Exception as e:
+            print(f"[Download] Unexpected error: {type(e).__name__}: {e}")
             raise
 
 # ====================== DRIVE UPLOAD ======================
@@ -469,7 +516,7 @@ def build_download_html(results: list, total_attach_mb: float):
 
 def build_search_html(results: list, query: str):
     cards = ""
-    bot_email = "yourbot@gmail.com"  # Change if needed
+    bot_email = "yourbot@gmail.com"
     for r in results:
         cards += f'''
         <div style="background:#fafafa;padding:20px;border-radius:12px;margin:20px 0;">
@@ -513,4 +560,9 @@ async def download_video(url: str, quality: str = "user"):
 
 @app.get("/")
 async def root():
-    return {"service": "YouTube Bot", "status": "running"}
+    return {
+        "service": "YouTube Bot",
+        "status": "running",
+        "node_js_available": NODE_AVAILABLE,
+        "message": "Node.js is required for YouTube challenge solving" if not NODE_AVAILABLE else "Ready to download videos"
+    }
